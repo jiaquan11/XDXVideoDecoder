@@ -1,11 +1,3 @@
-//
-//  XDXSortFrameHandler.h
-//  XDXVideoDecoder
-//
-//  Created by 小东邪 on 2019/6/24.
-//  Copyright © 2019 小东邪. All rights reserved.
-//
-
 #import <Foundation/Foundation.h>
 #import "XDXAVParseHandler.h"
 

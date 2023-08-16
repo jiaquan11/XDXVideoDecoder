@@ -1,11 +1,3 @@
-//
-//  XDXAVParseHandler.m
-//  XDXVideoDecoder
-//
-//  Created by 小东邪 on 2019/6/2.
-//  Copyright © 2019 小东邪. All rights reserved.
-//
-
 #import "XDXAVParseHandler.h"
 #import <UIKit/UIKit.h>
 #include "log4cplus.h"

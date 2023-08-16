@@ -1,11 +1,3 @@
-//
-//  XDXSortFrameHandler.m
-//  XDXVideoDecoder
-//
-//  Created by 小东邪 on 2019/6/24.
-//  Copyright © 2019 小东邪. All rights reserved.
-//
-
 #import "XDXSortFrameHandler.h"
 
 const static int g_maxSize = 4;

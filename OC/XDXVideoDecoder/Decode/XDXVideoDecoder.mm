@@ -1,11 +1,3 @@
-//
-//  XDXVideoDecoder.m
-//  XDXVideoDecoder
-//
-//  Created by 小东邪 on 2019/6/4.
-//  Copyright © 2019 小东邪. All rights reserved.
-//
-
 #import "XDXVideoDecoder.h"
 #import <VideoToolbox/VideoToolbox.h>
 #import <pthread.h>

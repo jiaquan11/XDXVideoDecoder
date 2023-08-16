@@ -1,11 +1,3 @@
-//
-//  XDXFFmpegVideoDecoder.h
-//  XDXVideoDecoder
-//
-//  Created by 小东邪 on 2019/6/6.
-//  Copyright © 2019 小东邪. All rights reserved.
-//
-
 #import <AVFoundation/AVFoundation.h>
 
 // FFmpeg Header File
