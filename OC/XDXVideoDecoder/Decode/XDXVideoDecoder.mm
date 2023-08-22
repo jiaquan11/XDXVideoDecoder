@@ -246,7 +246,6 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         [self destoryDecoder];
         return NULL;
     }
-    
     return session;
 }
 
@@ -319,7 +318,6 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         memcpy(*lastData, newData, newSize);
         *lastSize = newSize;
     }
-    
     return isNeedUpdate;
 }
 
@@ -525,7 +523,6 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     if (samplebuffer == NULL || status != noErr) {
         return NULL;
     }
-    
     return samplebuffer;
 }
 

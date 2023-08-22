@@ -3,8 +3,7 @@
 
 #define kModuleName "XDXParseHandler"
 
-@interface XDXFFmpegVideoDecoder ()
-{
+@interface XDXFFmpegVideoDecoder () {
     /*  FFmpeg  */
     AVFormatContext          *m_formatContext;
     AVCodecContext           *m_videoCodecContext;
@@ -14,7 +13,6 @@
     BOOL    m_isFindIDR;
     int64_t m_base_time;
 }
-
 @end
 
 @implementation XDXFFmpegVideoDecoder
@@ -33,7 +31,6 @@ static int InitHardwareDecoder(AVCodecContext *ctx, const enum AVHWDeviceType ty
 
 static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     CGFloat fps, timebase = 0.0;
-    
     if (st->time_base.den && st->time_base.num)
         timebase = av_q2d(st->time_base);
     else if(st->codec->time_base.den && st->codec->time_base.num)
@@ -45,7 +42,6 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
         fps = av_q2d(st->r_frame_rate);
     else
         fps = 1.0 / timebase;
-    
     return fps;
 }
 
@@ -151,7 +147,6 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     AVStream *videoStream = m_formatContext->streams[videoStreamIndex];
     int fps = DecodeGetAVStreamFPSTimeBase(videoStream);
     
-    
     avcodec_send_packet(videoCodecContext, &packet);
     while (0 == avcodec_receive_frame(videoCodecContext, videoFrame))
     {
@@ -238,5 +233,4 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     CMTime hostTime = CMClockGetTime(hostClockRef);
     return CMTimeGetSeconds(hostTime);
 }
-
 @end

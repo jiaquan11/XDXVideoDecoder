@@ -85,7 +85,6 @@ typedef struct XDXSortLinkList XDXSortLinkList;
     int64_t pts = (int64_t)(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBufferRef)) * 1000);
     return pts;
 }
-
 @end
 
 

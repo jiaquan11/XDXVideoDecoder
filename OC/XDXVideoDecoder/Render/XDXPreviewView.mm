@@ -479,7 +479,6 @@ GLfloat quadVertexData[] = {
 }
 
 #pragma mark Clean
-
 - (void)cleanUpTextures {
     if (_lumaTexture) {
         CFRelease(_lumaTexture);
@@ -526,5 +525,4 @@ GLfloat quadVertexData[] = {
     CGSize screenResolutionSize = CGSizeMake(width * [UIScreen mainScreen].scale,  height * [UIScreen mainScreen].scale);
     return screenResolutionSize;
 }
-
 @end

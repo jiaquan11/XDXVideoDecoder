@@ -33,7 +33,6 @@ extern "C" {
 @end
 
 @implementation ViewController
-
 - (void)viewDidLoad {
     [super viewDidLoad];
     [self setupUI];
@@ -57,7 +56,6 @@ extern "C" {
     }else {
         [self startDecodeByVTSessionWithIsH265Data:self.isH265File];
     }
-    
 }
 
 - (void)startDecodeByVTSessionWithIsH265Data:(BOOL)isH265 {
@@ -117,7 +115,6 @@ extern "C" {
     [self.previewView displayPixelBuffer:pix];
 }
 
-
 #pragma mark - Sort Callback
 - (void)getSortedVideoNode:(CMSampleBufferRef)sampleBuffer {
     int64_t pts = (int64_t)(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer)) * 1000);
@@ -127,5 +124,4 @@ extern "C" {
     
     [self.previewView displayPixelBuffer:CMSampleBufferGetImageBuffer(sampleBuffer)];
 }
-
 @end
