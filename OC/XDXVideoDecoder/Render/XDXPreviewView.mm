@@ -7,6 +7,7 @@
 
 #define IS_IPAD UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad
 
+//渲染的图像数据类型
 typedef enum : NSUInteger {
     XDXPixelBufferTypeNone = 0,
     XDXPixelBufferTypeNV12,
@@ -29,19 +30,14 @@ enum
     NUM_ATTRIBUTES
 };
 
+//苹果图像601颜色空间的转换矩阵 (YUV转换为RGB的计算矩阵)
 GLfloat kXDXPreViewColorConversion601FullRange[] = {
     1.0,    1.0,    1.0,
     0.0,    -0.343, 1.765,
     1.4,    -0.711, 0.0,
 };
 
-GLfloat quadTextureData[] = {
-    0.0f, 1.0f,
-    1.0f, 1.0f,
-    0.0f, 0.0f,
-    1.0f, 0.0f,
-};
-
+//顶点坐标
 GLfloat quadVertexData[] = {
     -1.0f, -1.0f,
     1.0f, -1.0f,
@@ -49,13 +45,20 @@ GLfloat quadVertexData[] = {
     1.0f, 1.0f,
 };
 
+//纹理坐标
+GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
+    0.0f, 1.0f,
+    1.0f, 1.0f,
+    0.0f, 0.0f,
+    1.0f, 0.0f,
+};
 
 @interface XDXPreviewView ()
 {
     GLint _backingWidth;
     GLint _backingHeight;
     
-    EAGLContext *_context;
+    EAGLContext *_context;//EGL上下文环境
     CVOpenGLESTextureCacheRef _videoTextureCache;
     
     GLuint _frameBufferHandle;
@@ -73,15 +76,15 @@ GLfloat quadVertexData[] = {
     GLint                   _displayInputTextureUniform;
 }
 
-@property (nonatomic, assign) BOOL      lastFullScreen;
-@property (nonatomic, assign) CGFloat   pixelbufferWidth;
-@property (nonatomic, assign) CGFloat   pixelbufferHeight;
-@property (nonatomic, assign) CGSize    screenResolutionSize;
-@property (nonatomic, assign) XDXPixelBufferType bufferType;
-@property (nonatomic, assign) XDXPixelBufferType lastBufferType;
+@property (nonatomic, assign) BOOL      lastFullScreen;//上次的屏幕宽
+@property (nonatomic, assign) CGFloat   pixelbufferWidth;//图像宽
+@property (nonatomic, assign) CGFloat   pixelbufferHeight;//图像高
+@property (nonatomic, assign) CGSize    screenResolutionSize;//屏幕分辨率大小
+@property (nonatomic, assign) XDXPixelBufferType bufferType;//图像数据类型
+@property (nonatomic, assign) XDXPixelBufferType lastBufferType;//上次的图像数据类型
 
 // 记录屏幕宽度,启动时如果是竖屏状态,会切换到横屏,所以屏幕宽高会改变,需要重新计算画面的尺寸。
-@property (nonatomic, assign) CGFloat screenWidth;
+@property (nonatomic, assign) CGFloat screenWidth;//手机屏幕宽度
 
 @end
 
@@ -96,6 +99,7 @@ GLfloat quadVertexData[] = {
     return self;
 }
 
+//重载UIView类的方法：initWithFrame
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
         [self initPreview];
@@ -131,15 +135,16 @@ GLfloat quadVertexData[] = {
     return [CAEAGLLayer class];
 }
 
+//创建EGL的上下文环境
 - (void)initPreview {
-    self.userInteractionEnabled = NO;
-    self.fullScreen = YES;
-    self.lastFullScreen = NO;
-    self.pixelbufferWidth = 0;
-    self.pixelbufferHeight = 0;
-    self.screenWidth = 0;
-    self.bufferType = XDXPixelBufferTypeNV12;
-    self.lastBufferType = XDXPixelBufferTypeNone;
+    self.userInteractionEnabled = NO;//设置为NO，表示用户的点击或者触摸事件会被忽略
+    self.fullScreen = YES;//默认进行全屏渲染
+    self.lastFullScreen = NO;//上次是否全屏
+    self.pixelbufferWidth = 0;//图像宽
+    self.pixelbufferHeight = 0;//图像高
+    self.screenWidth = 0;//手机屏幕宽
+    self.bufferType = XDXPixelBufferTypeNV12;//设置图像数据类型
+    self.lastBufferType = XDXPixelBufferTypeNone;//上次渲染的图像数据类型
     _preferredConversion = kXDXPreViewColorConversion601FullRange;
     
     _context = [self createOpenGLContextWithWidth:&_backingWidth
@@ -157,13 +162,14 @@ GLfloat quadVertexData[] = {
     
     CVReturn error;
     
-    int frameWidth  = (int)CVPixelBufferGetWidth(pixelBuffer);
-    int frameHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
+    int frameWidth  = (int)CVPixelBufferGetWidth(pixelBuffer);//获取实际的图像宽
+    int frameHeight = (int)CVPixelBufferGetHeight(pixelBuffer);//获取实际的图像高
     
     if (!videoTextureCache) {
         log4cplus_error(kModuleName, "No video texture cache");
         return;
     }
+    
     if ([EAGLContext currentContext] != context) {
         [EAGLContext setCurrentContext:context];
     }
@@ -347,7 +353,6 @@ GLfloat quadVertexData[] = {
         if (err != noErr)
             log4cplus_error(kModuleName, "Error at CVOpenGLESTextureCacheCreate %d",err);
     }
-    
     return context;
 }
 

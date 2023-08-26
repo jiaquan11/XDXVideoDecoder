@@ -6,6 +6,7 @@
 
 #define kModuleName "XDXVideoDecoder"
 
+//视频解码器视频信息
 typedef struct {
     CVPixelBufferRef outputPixelbuffer;
     int              rotate;
@@ -14,6 +15,7 @@ typedef struct {
     int              source_index;
 } XDXDecodeVideoInfo;
 
+//视频解码器视频头部信息
 typedef struct {
     uint8_t *vps;
     uint8_t *sps;
@@ -30,12 +32,13 @@ typedef struct {
     Float64 last_decode_pts;
 } XDXDecoderInfo;
 
+//类成员变量
 @interface XDXVideoDecoder ()
 {
-    VTDecompressionSessionRef   _decoderSession;
-    CMVideoFormatDescriptionRef _decoderFormatDescription;
+    VTDecompressionSessionRef   _decoderSession;//硬件解码器实例
+    CMVideoFormatDescriptionRef _decoderFormatDescription;//解码器格式描述信息
 
-    XDXDecoderInfo  _decoderInfo;
+    XDXDecoderInfo  _decoderInfo;//视频解码器视频头部信息
     pthread_mutex_t _decoder_lock;
     
     uint8_t *_lastExtraData;
@@ -49,6 +52,7 @@ typedef struct {
 @implementation XDXVideoDecoder
 
 #pragma mark - Callback
+//收到解码后数据的回调
 static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFrameRefCon, OSStatus status, VTDecodeInfoFlags infoFlags, CVImageBufferRef pixelBuffer, CMTime presentationTimeStamp, CMTime presentationDuration) {
     XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)sourceFrameRefCon;
     
@@ -60,13 +64,14 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         return;
     }
     
-    XDXVideoDecoder *decoder = (__bridge XDXVideoDecoder *)decompressionOutputRefCon;
+    XDXVideoDecoder *decoder = (__bridge XDXVideoDecoder *)decompressionOutputRefCon;//videotoolbox视频解码器
     
     CMSampleTimingInfo sampleTime = {
         .presentationTimeStamp  = presentationTimeStamp,
         .decodeTimeStamp        = presentationTimeStamp
     };
     
+    //构建samplebuffer数据类型
     CMSampleBufferRef samplebuffer = [decoder createSampleBufferFromPixelbuffer:pixelBuffer
                                                                     videoRotate:sourceRef->rotate
                                                                      timingInfo:sampleTime];
@@ -87,6 +92,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
 }
 
 #pragma mark - life cycle
+//类初始化操作
 - (instancetype)init {
     if (self = [super init]) {
         _decoderInfo = {
@@ -99,6 +105,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     return self;
 }
 
+//销毁解码器资源
 - (void)dealloc {
     _delegate = nil;
     [self destoryDecoder];
@@ -107,7 +114,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
 #pragma mark - Public
 - (void)startDecodeVideoData:(XDXParseVideoDataInfo *)videoInfo {
     // get extra data
-    if (videoInfo->extraData && videoInfo->extraDataSize) {
+    if (videoInfo->extraData && videoInfo->extraDataSize) {//视频解码器的扩展信息
         uint8_t *extraData = videoInfo->extraData;
         int     size       = videoInfo->extraDataSize;
         
@@ -116,17 +123,16 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                                                                lastData:&_lastExtraData
                                                                lastSize:&_lastExtraDataSize];
         if (isNeedUpdate) {
-            log4cplus_error(kModuleName, "%s: update extra data",__func__);
-            
+            log4cplus_info(kModuleName, "%s: update extra data",__func__);
             [self getNALUInfoWithVideoFormat:videoInfo->videoFormat
                                    extraData:extraData
                                extraDataSize:size
-                                 decoderInfo:&_decoderInfo];
+                                 decoderInfo:&_decoderInfo];//提取sps,pps,vps等信息
         }
     }
     
     // create decoder
-    if (!_decoderSession) {
+    if (!_decoderSession) {//创建解码器
         _decoderSession = [self createDecoderWithVideoInfo:videoInfo
                                               videoDescRef:&_decoderFormatDescription
                                                videoFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
@@ -137,6 +143,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     
     pthread_mutex_lock(&_decoder_lock);
     if (!_decoderSession) {
+        log4cplus_error(kModuleName, "%s: _decoderSession is NULL",__func__);
         pthread_mutex_unlock(&_decoder_lock);
         return;
     }
@@ -156,7 +163,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     // start decode
     [self startDecode:videoInfo
               session:_decoderSession
-                 lock:_decoder_lock];
+                 lock:_decoder_lock];//开始解码
 }
 
 - (void)stopDecoder {
@@ -237,7 +244,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                                           NULL,
                                           attrs,
                                           &callBackRecord,
-                                          &session);
+                                          &session);//创建解码器
     
     CFRelease(attrs);
     pthread_mutex_unlock(&lock);
@@ -249,54 +256,55 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     return session;
 }
 
+//销毁解码器的相关资源
 - (void)destoryDecoder {
     pthread_mutex_lock(&_decoder_lock);
     
-    if (_decoderInfo.vps) {
+    if (_decoderInfo.vps) {//vps
         free(_decoderInfo.vps);
         _decoderInfo.vps_size = 0;
         _decoderInfo.vps = NULL;
     }
     
-    if (_decoderInfo.sps) {
+    if (_decoderInfo.sps) {//sps
         free(_decoderInfo.sps);
         _decoderInfo.sps_size = 0;
         _decoderInfo.sps = NULL;
     }
     
-    if (_decoderInfo.f_pps) {
+    if (_decoderInfo.f_pps) {//pps
         free(_decoderInfo.f_pps);
         _decoderInfo.f_pps_size = 0;
         _decoderInfo.f_pps = NULL;
     }
     
-    if (_decoderInfo.r_pps) {
+    if (_decoderInfo.r_pps) {//pps
         free(_decoderInfo.r_pps);
         _decoderInfo.r_pps_size = 0;
         _decoderInfo.r_pps = NULL;
     }
     
-    if (_lastExtraData) {
+    if (_lastExtraData) {//视频解码器扩展信息
         free(_lastExtraData);
         _lastExtraDataSize = 0;
         _lastExtraData = NULL;
     }
     
-    if (_decoderSession) {
+    if (_decoderSession) {//解码器实例
         VTDecompressionSessionWaitForAsynchronousFrames(_decoderSession);
         VTDecompressionSessionInvalidate(_decoderSession);
         CFRelease(_decoderSession);
         _decoderSession = NULL;
     }
     
-    if (_decoderFormatDescription) {
+    if (_decoderFormatDescription) {//视频解码器格式描述信息
         CFRelease(_decoderFormatDescription);
         _decoderFormatDescription = NULL;
     }
     pthread_mutex_unlock(&_decoder_lock);
 }
 
-
+//判断是否需要更新extraData数据给到解码器
 - (BOOL)isNeedUpdateExtraDataWithNewExtraData:(uint8_t *)newData newSize:(int)newSize lastData:(uint8_t **)lastData lastSize:(int *)lastSize {
     BOOL isNeedUpdate = NO;
     if (*lastSize == 0) {
@@ -305,15 +313,16 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         if (*lastSize != newSize) {
             isNeedUpdate = YES;
         }else {
-            if (memcmp(newData, *lastData, newSize) != 0) {
+            if (memcmp(newData, *lastData, newSize) != 0) {//比较存放内存的值是否相同
                 isNeedUpdate = YES;
             }
         }
     }
     
     if (isNeedUpdate) {
-        [self destoryDecoder];
+        [self destoryDecoder];//销毁解码器
         
+        //使用新的视频解码器扩展信息
         *lastData = (uint8_t *)malloc(newSize);
         memcpy(*lastData, newData, newSize);
         *lastSize = newSize;
@@ -331,6 +340,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     memcpy(*originDataRef, newData, size);
 }
 
+//在extradata中提取vps,sps,pps等信息
 - (void)getNALUInfoWithVideoFormat:(XDXVideoEncodeFormat)videoFormat extraData:(uint8_t *)extraData extraDataSize:(int)extraDataSize decoderInfo:(XDXDecoderInfo *)decoderInfo {
 
     uint8_t *data = extraData;
@@ -344,28 +354,28 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     
     for (int i = 0; i < size; i ++) {
         if (i >= 3) {
-            if (data[i] == 0x01 && data[i - 1] == 0x00 && data[i - 2] == 0x00 && data[i - 3] == 0x00) {
+            if ((data[i] == 0x01) && (data[i - 1] == 0x00) && (data[i - 2] == 0x00) && (data[i - 3] == 0x00)) {
                 if (videoFormat == XDXH264EncodeFormat) {
-                    if (startCodeSPSIndex == 0) {
+                    if (startCodeSPSIndex == 0) {//首先找到SPS，记录索引
                         startCodeSPSIndex = i;
                     }
-                    if (i > startCodeSPSIndex) {
+                    if (i > startCodeSPSIndex) {//PPS
                         startCodeFPPSIndex = i;
                     }
                 }else if (videoFormat == XDXH265EncodeFormat) {
-                    if (startCodeVPSIndex == 0) {
+                    if (startCodeVPSIndex == 0) {//首先找到VPS，记录索引
                         startCodeVPSIndex = i;
                         continue;
                     }
-                    if (i > startCodeVPSIndex && startCodeSPSIndex == 0) {
+                    if ((i > startCodeVPSIndex) && (startCodeSPSIndex == 0)) {//SPS
                         startCodeSPSIndex = i;
                         continue;
                     }
-                    if (i > startCodeSPSIndex && startCodeFPPSIndex == 0) {
+                    if ((i > startCodeSPSIndex) && (startCodeFPPSIndex == 0)) {//第一个PPS
                         startCodeFPPSIndex = i;
                         continue;
                     }
-                    if (i > startCodeFPPSIndex && startCodeRPPSIndex == 0) {
+                    if ((i > startCodeFPPSIndex) && (startCodeRPPSIndex == 0)) {//第二个PPS
                         startCodeRPPSIndex = i;
                     }
                 }
@@ -380,16 +390,16 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         int f_ppsSize = size - (startCodeFPPSIndex + 1);
         decoderInfo->f_pps_size = f_ppsSize;
         
-        nalu_type = ((uint8_t)data[startCodeSPSIndex + 1] & 0x1F);
-        if (nalu_type == 0x07) {
+        nalu_type = ((uint8_t)data[startCodeSPSIndex + 1] & 0x1F);//取低5位
+        if (nalu_type == 0x07) {//sps
             uint8_t *sps = &data[startCodeSPSIndex + 1];
-            [self copyDataWithOriginDataRef:&decoderInfo->sps newData:sps size:spsSize];
+            [self copyDataWithOriginDataRef:&decoderInfo->sps newData:sps size:spsSize];//拷贝sps
         }
         
         nalu_type = ((uint8_t)data[startCodeFPPSIndex + 1] & 0x1F);
-        if (nalu_type == 0x08) {
+        if (nalu_type == 0x08) {//pps
             uint8_t *pps = &data[startCodeFPPSIndex + 1];
-            [self copyDataWithOriginDataRef:&decoderInfo->f_pps newData:pps size:f_ppsSize];
+            [self copyDataWithOriginDataRef:&decoderInfo->f_pps newData:pps size:f_ppsSize];//拷贝pps
         }
     } else {
         int vpsSize = startCodeSPSIndex - startCodeVPSIndex - 4;
@@ -399,19 +409,19 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         decoderInfo->f_pps_size = f_ppsSize;
         
         nalu_type = ((uint8_t) data[startCodeVPSIndex + 1] & 0x4F);
-        if (nalu_type == 0x40) {
+        if (nalu_type == 0x40) {//vps
             uint8_t *vps = &data[startCodeVPSIndex + 1];
             [self copyDataWithOriginDataRef:&decoderInfo->vps newData:vps size:vpsSize];
         }
         
         nalu_type = ((uint8_t) data[startCodeSPSIndex + 1] & 0x4F);
-        if (nalu_type == 0x42) {
+        if (nalu_type == 0x42) {//sps
             uint8_t *sps = &data[startCodeSPSIndex + 1];
             [self copyDataWithOriginDataRef:&decoderInfo->sps newData:sps size:spsSize];
         }
         
         nalu_type = ((uint8_t) data[startCodeFPPSIndex + 1] & 0x4F);
-        if (nalu_type == 0x44) {
+        if (nalu_type == 0x44) {//pps
             uint8_t *pps = &data[startCodeFPPSIndex + 1];
             [self copyDataWithOriginDataRef:&decoderInfo->f_pps newData:pps size:f_ppsSize];
         }
@@ -438,11 +448,12 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     int     size   = videoInfo->dataSize;
     int     rotate = videoInfo->videoRotate;
     CMSampleTimingInfo timingInfo = videoInfo->timingInfo;
+//    log4cplus_info(kModuleName, "%s: start decode data size: %d",__func__, size);
     
     uint8_t *tempData = (uint8_t *)malloc(size);
     memcpy(tempData, data, size);
-    
-    XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)malloc(sizeof(XDXParseVideoDataInfo));
+
+    XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)malloc(sizeof(XDXDecodeVideoInfo));
     sourceRef->outputPixelbuffer  = NULL;
     sourceRef->rotate             = rotate;
     sourceRef->pts                = videoInfo->pts;
@@ -474,11 +485,11 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                                            &sampleBuffer);
         
         if (status == kCMBlockBufferNoErr && sampleBuffer) {
-            VTDecodeFrameFlags flags   = kVTDecodeFrame_EnableAsynchronousDecompression;
+            VTDecodeFrameFlags flags   = kVTDecodeFrame_EnableAsynchronousDecompression;//异步模式
             VTDecodeInfoFlags  flagOut = 0;
             OSStatus decodeStatus      = VTDecompressionSessionDecodeFrame(session,
                                                                            sampleBuffer,
-                                                                           flags,
+                                                                           flags,//解码模式
                                                                            sourceRef,
                                                                            &flagOut);
             if(decodeStatus == kVTInvalidSessionErr) {

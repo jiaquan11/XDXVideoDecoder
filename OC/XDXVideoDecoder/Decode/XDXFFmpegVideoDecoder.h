@@ -18,6 +18,7 @@ extern "C" {
 
 NS_ASSUME_NONNULL_BEGIN
 
+//定义代理协议
 @protocol XDXFFmpegVideoDecoderDelegate <NSObject>
 
 @optional
@@ -25,6 +26,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+/**
+ FFmpeg解码类
+ */
 @interface XDXFFmpegVideoDecoder : NSObject
 
 @property (weak, nonatomic) id<XDXFFmpegVideoDecoderDelegate> delegate;

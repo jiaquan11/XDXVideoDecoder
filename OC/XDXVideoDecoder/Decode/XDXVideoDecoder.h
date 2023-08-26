@@ -3,6 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+//定义需遵守的协议
 @protocol XDXVideoDecoderDelegate <NSObject>
 
 @optional
@@ -17,13 +18,13 @@ NS_ASSUME_NONNULL_BEGIN
 /**
     Start / Stop decoder
  */
-- (void)startDecodeVideoData:(struct XDXParseVideoDataInfo *)videoInfo;
-- (void)stopDecoder;
+- (void)startDecodeVideoData:(struct XDXParseVideoDataInfo *)videoInfo;//开始解码
+- (void)stopDecoder;//结束解码
 
 /**
     Reset timestamp when you parse a new file (only use the decoder as global var)
  */
-- (void)resetTimestamp;
+- (void)resetTimestamp;//重置时间戳方法
 
 @end
 

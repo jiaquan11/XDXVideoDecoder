@@ -23,6 +23,7 @@ typedef enum : NSUInteger {
     XDXH265EncodeFormat,
 } XDXVideoEncodeFormat;
 
+//存储解析的视频信息
 struct XDXParseVideoDataInfo {
     uint8_t                 *data;
     int                     dataSize;
@@ -36,6 +37,7 @@ struct XDXParseVideoDataInfo {
     XDXVideoEncodeFormat    videoFormat;
 };
 
+//存储解析的音频信息
 struct XDXParseAudioDataInfo {
     uint8_t     *data;
     int         dataSize;
@@ -46,15 +48,13 @@ struct XDXParseAudioDataInfo {
 
 @interface XDXAVParseHandler : NSObject
 
-
 /**
  Init Parse Handler by file path
 
  @param path file path
  @return the object instance
  */
-- (instancetype)initWithPath:(NSString *)path;
-
+- (instancetype)initWithPath:(NSString *)path;//媒体路径
 
 /**
  Start parse file content
@@ -64,16 +64,16 @@ struct XDXParseAudioDataInfo {
  2.You could get the audio / video infomation by `AVPacket`.
  @param handler get some parse information.
  */
-- (void)startParseWithCompletionHandler:(void (^)(BOOL isVideoFrame, BOOL isFinish, struct XDXParseVideoDataInfo *videoInfo, struct XDXParseAudioDataInfo *audioInfo))handler;
 - (void)startParseGetAVPackeWithCompletionHandler:(void (^)(BOOL isVideoFrame, BOOL isFinish, AVPacket packet))handler;
 
+- (void)startParseWithCompletionHandler:(void (^)(BOOL isVideoFrame, BOOL isFinish, struct XDXParseVideoDataInfo *videoInfo, struct XDXParseAudioDataInfo *audioInfo))handler;
 
 /**
  Get Method
  */
-- (AVFormatContext *)getFormatContext;
-- (int)getVideoStreamIndex;
-- (int)getAudioStreamIndex;
+- (AVFormatContext *)getFormatContext;//媒体信息上下文
+- (int)getVideoStreamIndex;//视频流索引
+- (int)getAudioStreamIndex;//音频流索引
 
 @end
 

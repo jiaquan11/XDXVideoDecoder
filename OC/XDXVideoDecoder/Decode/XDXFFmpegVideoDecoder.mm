@@ -228,6 +228,7 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
 }
 
 
+//获取系统时间戳
 - (Float64)getCurrentTimestamp {
     CMClockRef hostClockRef = CMClockGetHostTimeClock();
     CMTime hostTime = CMClockGetTime(hostClockRef);

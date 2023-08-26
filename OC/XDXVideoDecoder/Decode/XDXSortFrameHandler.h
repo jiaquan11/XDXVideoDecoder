@@ -3,6 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+//定义协议
 @protocol XDXSortFrameHandlerDelegate <NSObject>
 
 @optional
@@ -12,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface XDXSortFrameHandler : NSObject
 
-@property (weak  , nonatomic) id<XDXSortFrameHandlerDelegate> delegate;
+@property (weak, nonatomic) id<XDXSortFrameHandlerDelegate> delegate;
 
 - (void)addDataToLinkList:(CMSampleBufferRef)videoDataRef;
 - (void)cleanLinkList;
