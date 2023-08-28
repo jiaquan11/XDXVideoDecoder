@@ -316,7 +316,7 @@ static int GetAVStreamFPSTimeBase(AVStream *st) {
             
             if (packet.stream_index == videoStreamIndex) {
                 handler(YES, NO, packet);
-            }else {//音频数据暂不处理，不播放
+            } else {//音频数据暂不处理，不播放
                 handler(NO, NO, packet);
             }
             
@@ -472,7 +472,7 @@ static int GetAVStreamFPSTimeBase(AVStream *st) {
                 av_free(new_packet.data);//需要及时释放
 
 //                log4cplus_info(kModuleName, "%s: extra data size: %d",__func__, videoInfo.extraDataSize);
-
+//
 //                NSLog(@"-------------extra data------------");
 //                NSMutableString *extraDataString = [NSMutableString string]; 
 //                for (int i = 0; i < videoInfo.extraDataSize; i++) {

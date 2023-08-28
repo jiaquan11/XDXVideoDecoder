@@ -55,7 +55,6 @@ typedef struct {
 //收到解码后数据的回调
 static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFrameRefCon, OSStatus status, VTDecodeInfoFlags infoFlags, CVImageBufferRef pixelBuffer, CMTime presentationTimeStamp, CMTime presentationDuration) {
     XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)sourceFrameRefCon;
-    
     if (pixelBuffer == NULL) {
         log4cplus_error(kModuleName, "%s: pixelbuffer is NULL status = %d",__func__,status);
         if (sourceRef) {
@@ -71,11 +70,10 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         .decodeTimeStamp        = presentationTimeStamp
     };
     
-    //构建samplebuffer数据类型
+    //根据解码后的图像数据构建samplebuffer数据类型，用于渲染
     CMSampleBufferRef samplebuffer = [decoder createSampleBufferFromPixelbuffer:pixelBuffer
                                                                     videoRotate:sourceRef->rotate
                                                                      timingInfo:sampleTime];
-    
     if (samplebuffer) {
         if ([decoder.delegate respondsToSelector:@selector(getVideoDecodeDataCallback:isFirstFrame:)]) {
             [decoder.delegate getVideoDecodeDataCallback:samplebuffer isFirstFrame:decoder->_isFirstFrame];
@@ -135,7 +133,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     if (!_decoderSession) {//创建解码器
         _decoderSession = [self createDecoderWithVideoInfo:videoInfo
                                               videoDescRef:&_decoderFormatDescription
-                                               videoFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+                                               videoFormat:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange//等同于NV12
                                                       lock:_decoder_lock
                                                   callback:VideoDecoderCallback
                                                decoderInfo:_decoderInfo];
@@ -362,7 +360,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                     if (i > startCodeSPSIndex) {//PPS
                         startCodeFPPSIndex = i;
                     }
-                }else if (videoFormat == XDXH265EncodeFormat) {
+                } else if (videoFormat == XDXH265EncodeFormat) {
                     if (startCodeVPSIndex == 0) {//首先找到VPS，记录索引
                         startCodeVPSIndex = i;
                         continue;
@@ -405,8 +403,14 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         int vpsSize = startCodeSPSIndex - startCodeVPSIndex - 4;
         decoderInfo->vps_size = vpsSize;
         
-        int f_ppsSize = startCodeRPPSIndex - startCodeFPPSIndex - 4;
-        decoderInfo->f_pps_size = f_ppsSize;
+        int f_ppsSize = 0;
+        if (startCodeRPPSIndex != 0) {
+            f_ppsSize = startCodeRPPSIndex - startCodeFPPSIndex - 4;
+            decoderInfo->f_pps_size = f_ppsSize;
+        }else {
+            f_ppsSize = size - (startCodeFPPSIndex + 1);
+            decoderInfo->f_pps_size = f_ppsSize;
+        }
         
         nalu_type = ((uint8_t) data[startCodeVPSIndex + 1] & 0x4F);
         if (nalu_type == 0x40) {//vps
@@ -455,9 +459,9 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
 
     XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)malloc(sizeof(XDXDecodeVideoInfo));
     sourceRef->outputPixelbuffer  = NULL;
-    sourceRef->rotate             = rotate;
-    sourceRef->pts                = videoInfo->pts;
-    sourceRef->fps                = videoInfo->fps;
+    sourceRef->rotate             = rotate;//视频角度
+    sourceRef->pts                = videoInfo->pts;//显示时间戳
+    sourceRef->fps                = videoInfo->fps;//帧率
     
     CMBlockBufferRef blockBuffer;
     OSStatus status = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,
@@ -468,7 +472,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                                                          0,
                                                          size,
                                                          0,
-                                                         &blockBuffer);
+                                                         &blockBuffer);//构建一个blockBuffer
     
     if (status == kCMBlockBufferNoErr) {
         CMSampleBufferRef sampleBuffer = NULL;
@@ -482,7 +486,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                                            &timingInfo,
                                            1,
                                            sampleSizeArray,
-                                           &sampleBuffer);
+                                           &sampleBuffer);//blockBuffer再构建成一个sampleBuffer
         
         if (status == kCMBlockBufferNoErr && sampleBuffer) {
             VTDecodeFrameFlags flags   = kVTDecodeFrame_EnableAsynchronousDecompression;//异步模式
@@ -491,7 +495,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
                                                                            sampleBuffer,
                                                                            flags,//解码模式
                                                                            sourceRef,
-                                                                           &flagOut);
+                                                                           &flagOut);//开始解码
             if(decodeStatus == kVTInvalidSessionErr) {
                 pthread_mutex_unlock(&lock);
                 [self destoryDecoder];

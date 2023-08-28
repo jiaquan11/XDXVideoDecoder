@@ -102,13 +102,13 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
 //重载UIView类的方法：initWithFrame
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
-        [self initPreview];
+        [self initPreview];//初始化相关环境
     }
     return self;
 }
 
 - (void)dealloc {
-    [self cleanUpTextures];
+    [self cleanUpTextures];//释放opengl相关资源
     
     if(_videoTextureCache) {
         CFRelease(_videoTextureCache);
@@ -145,7 +145,7 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     self.screenWidth = 0;//手机屏幕宽
     self.bufferType = XDXPixelBufferTypeNV12;//设置图像数据类型
     self.lastBufferType = XDXPixelBufferTypeNone;//上次渲染的图像数据类型
-    _preferredConversion = kXDXPreViewColorConversion601FullRange;
+    _preferredConversion = kXDXPreViewColorConversion601FullRange;//转换矩阵
     
     _context = [self createOpenGLContextWithWidth:&_backingWidth
                                            height:&_backingHeight
@@ -240,7 +240,6 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        
     } else if (bufferType == XDXPixelBufferTypeRGB) {
         // RGB
         glActiveTexture(GL_TEXTURE0);
@@ -295,12 +294,13 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     if (self.lastFullScreen != self.isFullScreen || self.pixelbufferWidth != frameWidth || self.pixelbufferHeight != frameHeight
         || normalizedSamplingSize.width == 0 || normalizedSamplingSize.height == 0  || self.screenWidth != [UIScreen mainScreen].bounds.size.width) {
         
-        normalizedSamplingSize = [self getNormalizedSamplingSize:CGSizeMake(frameWidth, frameHeight)];
+        normalizedSamplingSize = [self getNormalizedSamplingSize:CGSizeMake(frameWidth, frameHeight)];//得到等比例归一化渲染的坐标值
         self.lastFullScreen = self.isFullScreen;
         self.pixelbufferWidth = frameWidth;
         self.pixelbufferHeight = frameHeight;
         self.screenWidth = [UIScreen mainScreen].bounds.size.width;
         
+        //顶点坐标赋值
         quadVertexData[0] = -1 * normalizedSamplingSize.width;
         quadVertexData[1] = -1 * normalizedSamplingSize.height;
         quadVertexData[2] = normalizedSamplingSize.width;
@@ -336,7 +336,7 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     eaglLayer.drawableProperties = @{kEAGLDrawablePropertyRetainedBacking   : [NSNumber numberWithBool:NO],
                                      kEAGLDrawablePropertyColorFormat       : kEAGLColorFormatRGBA8};
     
-    EAGLContext *context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+    EAGLContext *context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];//EGL上下文
     [EAGLContext setCurrentContext:context];
     
     [self setupBuffersWithContext:context
@@ -345,13 +345,15 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
                 colorBufferHandle:colorBufferHandle
                 frameBufferHandle:frameBufferHandle];
     
+    //同时加载两个shader的程序
     [self loadShaderWithBufferType:XDXPixelBufferTypeNV12];
     [self loadShaderWithBufferType:XDXPixelBufferTypeRGB];
     
-    if (!*videoTextureCache) {
+    if (!*videoTextureCache) {//创建渲染纹理
         CVReturn err = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, NULL, context, NULL, videoTextureCache);
-        if (err != noErr)
+        if (err != noErr) {
             log4cplus_error(kModuleName, "Error at CVOpenGLESTextureCacheCreate %d",err);
+        }
     }
     return context;
 }
@@ -372,10 +374,12 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     glBindRenderbuffer(GL_RENDERBUFFER, *colorBufferHandle);
     
     [context renderbufferStorage:GL_RENDERBUFFER fromDrawable:(CAEAGLLayer *)self.layer];
-    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH , width);
-    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, height);
+    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH , width);//获取屏幕的宽
+    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, height);//获取屏幕的高
     
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, *colorBufferHandle);
+    log4cplus_error(kModuleName, "setupBuffersWithContext width: %d, height: %d", *width, *height);
+    
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, *colorBufferHandle);//frameBuffer加入到RenderBuffer中
 }
 
 - (void)loadShaderWithBufferType:(XDXPixelBufferType)type {
@@ -409,8 +413,8 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     glAttachShader(program, vertShader);
     glAttachShader(program, fragShader);
     
-    glBindAttribLocation(program, ATTRIB_VERTEX  , "position");
-    glBindAttribLocation(program, ATTRIB_TEXCOORD, "inputTextureCoordinate");
+    glBindAttribLocation(program, ATTRIB_VERTEX  , "position");//顶点坐标
+    glBindAttribLocation(program, ATTRIB_TEXCOORD, "inputTextureCoordinate");//纹理坐标
     
     if (![self linkProgram:program]) {
         if (vertShader) {
@@ -504,17 +508,20 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
 }
 
 #pragma mark Other
+//图像大小归一化显示
 - (CGSize)getNormalizedSamplingSize:(CGSize)frameSize {
     CGFloat width = 0, height = 0;
-    if (self.isFullScreen) {
-        if (IS_IPAD) {
+    if (self.isFullScreen) {//全屏模式
+        if (IS_IPAD) {//ipad使用横屏
             width = frameSize.width * self.screenResolutionSize.height / frameSize.height;
             return CGSizeMake(width / self.screenResolutionSize.width, 1.0);
         }
+        //竖屏
         height = frameSize.height * self.screenResolutionSize.width / frameSize.width;
         return CGSizeMake(1.0, height / self.screenResolutionSize.height);
     }
     
+    //非全屏模式
     if (IS_IPAD) {
         height = frameSize.height * self.screenResolutionSize.width / frameSize.width;
         return CGSizeMake(1.0, height / self.screenResolutionSize.height);
@@ -523,6 +530,7 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     return CGSizeMake(width / self.screenResolutionSize.width, 1.0);
 }
 
+//获取屏幕分辨率
 - (CGSize)screenResolutionSize {
     CGFloat width  = [UIScreen mainScreen].bounds.size.width;
     CGFloat height = [UIScreen mainScreen].bounds.size.height;

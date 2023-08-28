@@ -85,7 +85,7 @@ extern "C" {
 }
 
 - (void)startDecodeByVTSessionWithIsH265Data:(BOOL)isH265 {
-    NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"testh265" : @"testh264"  ofType:@"MOV"];
+    NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"test30frames_1080p_ld2" : @"testh264"  ofType:@"mp4"];
     XDXAVParseHandler *parseHandler = [[XDXAVParseHandler alloc] initWithPath:path];//创建ffmpeg解析器
     XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];//创建VideoToolbox硬件解码器
     decoder.delegate = self;//设置VideoToolbox解码器的代理

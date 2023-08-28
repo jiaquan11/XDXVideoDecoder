@@ -1,7 +1,7 @@
 #import "XDXFFmpegVideoDecoder.h"
 #include "log4cplus.h"
 
-#define kModuleName "XDXParseHandler"
+#define kModuleName "XDXFFmpegVideoDecoder"
 
 @interface XDXFFmpegVideoDecoder () {
     /*  FFmpeg  */
@@ -18,30 +18,35 @@
 @implementation XDXFFmpegVideoDecoder
 
 #pragma mark - C Function
+//创建ffmpeg的硬件解码器
 AVBufferRef *hw_device_ctx = NULL;
 static int InitHardwareDecoder(AVCodecContext *ctx, const enum AVHWDeviceType type) {
     int err = av_hwdevice_ctx_create(&hw_device_ctx, type, NULL, NULL, 0);
     if (err < 0) {
-        log4cplus_error("XDXParseParse", "Failed to create specified HW device.\n");
+        log4cplus_error(kModuleName, "Failed to create specified HW device.\n");
         return err;
     }
     ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
     return err;
 }
 
+//获取视频帧率
 static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     CGFloat fps, timebase = 0.0;
-    if (st->time_base.den && st->time_base.num)
+    if (st->time_base.den && st->time_base.num) {
         timebase = av_q2d(st->time_base);
-    else if(st->codec->time_base.den && st->codec->time_base.num)
+    } else if(st->codec->time_base.den && st->codec->time_base.num) {
         timebase = av_q2d(st->codec->time_base);
+    }
     
-    if (st->avg_frame_rate.den && st->avg_frame_rate.num)
+    if (st->avg_frame_rate.den && st->avg_frame_rate.num) {
         fps = av_q2d(st->avg_frame_rate);
-    else if (st->r_frame_rate.den && st->r_frame_rate.num)
+    }
+    else if (st->r_frame_rate.den && st->r_frame_rate.num) {
         fps = av_q2d(st->r_frame_rate);
-    else
+    } else {
         fps = 1.0 / timebase;
+    }
     return fps;
 }
 
@@ -59,6 +64,7 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     return self;
 }
 
+//初始化ffmpeg解码器
 - (void)initDecoder {
     AVStream *videoStream = m_formatContext->streams[m_videoStreamIndex];
     m_videoCodecContext = [self createVideoEncderWithFormatContext:m_formatContext
@@ -102,7 +108,7 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     AVCodecContext *codecContext = NULL;
     AVCodec *codec = NULL;
     
-    const char *codecName = av_hwdevice_get_type_name(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
+    const char *codecName = av_hwdevice_get_type_name(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);//iOS端通过ffmpeg硬解，内部封装的是VIDEOTOOLBOX框架
     enum AVHWDeviceType type = av_hwdevice_find_type_by_name(codecName);
     if (type != AV_HWDEVICE_TYPE_VIDEOTOOLBOX) {
         log4cplus_error(kModuleName, "%s: Not find hardware codec.",__func__);
@@ -116,48 +122,46 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     }
     
     codecContext = avcodec_alloc_context3(codec);
-    if (!codecContext){
+    if (!codecContext) {
         log4cplus_error(kModuleName, "avcodec_alloc_context3 faliture");
         return NULL;
     }
     
     ret = avcodec_parameters_to_context(codecContext, formatContext->streams[videoStreamIndex]->codecpar);
-    if (ret < 0){
+    if (ret < 0) {
         log4cplus_error(kModuleName, "avcodec_parameters_to_context faliture");
         return NULL;
     }
     
-    ret = InitHardwareDecoder(codecContext, type);
-    if (ret < 0){
+    ret = InitHardwareDecoder(codecContext, type);//创建硬件解码器
+    if (ret < 0) {
         log4cplus_error(kModuleName, "hw_decoder_init faliture");
         return NULL;
     }
     
-    ret = avcodec_open2(codecContext, codec, NULL);
+    ret = avcodec_open2(codecContext, codec, NULL);//打开硬件解码器
     if (ret < 0) {
         log4cplus_error(kModuleName, "avcodec_open2 faliture");
         return NULL;
     }
-    
     return codecContext;
 }
 
 - (void)startDecodeVideoDataWithAVPacket:(AVPacket)packet videoCodecContext:(AVCodecContext *)videoCodecContext videoFrame:(AVFrame *)videoFrame baseTime:(int64_t)baseTime videoStreamIndex:(int)videoStreamIndex {
     Float64 current_timestamp = [self getCurrentTimestamp];
     AVStream *videoStream = m_formatContext->streams[videoStreamIndex];
-    int fps = DecodeGetAVStreamFPSTimeBase(videoStream);
+    int fps = DecodeGetAVStreamFPSTimeBase(videoStream);//获取帧率
     
     avcodec_send_packet(videoCodecContext, &packet);
     while (0 == avcodec_receive_frame(videoCodecContext, videoFrame))
     {
-        CVPixelBufferRef pixelBuffer = (CVPixelBufferRef)videoFrame->data[3];
+        CVPixelBufferRef pixelBuffer = (CVPixelBufferRef)videoFrame->data[3];//ffmpeg硬解出来的图像也是NV12
         CMTime presentationTimeStamp = kCMTimeInvalid;
         int64_t originPTS = videoFrame->pts;
-        int64_t newPTS    = originPTS - baseTime;
+        int64_t newPTS    = originPTS - baseTime;//得到新的时间戳
         presentationTimeStamp = CMTimeMakeWithSeconds(current_timestamp + newPTS * av_q2d(videoStream->time_base) , fps);
         CMSampleBufferRef sampleBufferRef = [self convertCVImageBufferRefToCMSampleBufferRef:(CVPixelBufferRef)pixelBuffer
                                                                    withPresentationTimeStamp:presentationTimeStamp];
-        
         if (sampleBufferRef) {
             if ([self.delegate respondsToSelector:@selector(getDecodeVideoDataByFFmpeg:)]) {
                 [self.delegate getDecodeVideoDataByFFmpeg:sampleBufferRef];
@@ -214,7 +218,6 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
                                              NULL,
                                              videoInfo,
                                              &timingInfo, &newSampleBuffer);
-    
     CFRelease(videoInfo);
     if (res != 0) {
         log4cplus_error(kModuleName, "%s: Create sample buffer failed!",__func__);
@@ -226,7 +229,6 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
     return newSampleBuffer;
 }
-
 
 //获取系统时间戳
 - (Float64)getCurrentTimestamp {
