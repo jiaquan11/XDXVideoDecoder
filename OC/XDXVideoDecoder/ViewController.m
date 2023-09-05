@@ -32,6 +32,7 @@ extern "C" {
 
 @property (nonatomic, assign) BOOL isH265File;
 @property (strong, nonatomic) XDXSortFrameHandler *sortHandler;
+@property (strong, nonatomic) XDXVideoDecoder *decoder;
 
 @end
 
@@ -62,7 +63,7 @@ extern "C" {
         [self startDecodeByFFmpegWithIsH265Data:self.isH265File];//使用ffmpeg接口进行软解码
     }else {
         log4cplus_info(kModuleName, "use VideoToolbox!");//使用硬件VideoToolbox接口进行硬解码
-        BOOL isVideoFile = NO;
+        BOOL isVideoFile = YES;
         if (isVideoFile) {
             //1.解析视频媒体文件并解码渲染
             [self startDecodeByVTSessionWithIsH265Data:self.isH265File];
@@ -94,27 +95,25 @@ extern "C" {
 - (void)startDecodeByVTSessionWithIsH265Data:(BOOL)isH265 {
     NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"hanleiVideo" : @"testh264"  ofType:@"mp4"];
     XDXAVParseHandler *parseHandler = [[XDXAVParseHandler alloc] initWithPath:path];//创建ffmpeg解析器
-    XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];//创建VideoToolbox硬件解码器
-    decoder.delegate = self;//设置VideoToolbox解码器的代理
+    self.decoder = [[XDXVideoDecoder alloc] init];//创建VideoToolbox硬件解码器
+    self.decoder.delegate = self;//设置VideoToolbox解码器的代理
     
     [parseHandler startParseWithCompletionHandler:^(BOOL isVideoFrame, BOOL isFinish, struct XDXParseVideoDataInfo *videoParseInfo, struct XDXParseAudioDataInfo *audioParseInfo) {
         if (isFinish) {//结束解码
-            [decoder stopDecoder];
+            [self.decoder stopDecoder];
             return;
         }
         
         if (isVideoFrame) {
             //            log4cplus_info(kModuleName, "%s: controller data size:%d", __func__, videoParseInfo->dataSize);
-            [decoder startDecodeVideoData:videoParseInfo];//硬件解码
+            [self.decoder startDecodeVideoData:videoParseInfo];//硬件解码
         }
     }];
 }
 
 - (void)startDecodeByVTSessionWithIsH265NakedData:(BOOL)isH265 {
-    XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];
-    decoder.delegate = self;
-    
-    log4cplus_info(kModuleName, "%s: decoder.delegate:%p", __func__, decoder.delegate);
+    self.decoder = [[XDXVideoDecoder alloc] init];
+    self.decoder.delegate = self;
     
     NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"test30frames_1080p_ld2" : @"testh264"  ofType:@"265"];
     NSInputStream* inputStream = [NSInputStream inputStreamWithFileAtPath:path];
@@ -123,10 +122,6 @@ extern "C" {
         return;
     }
     log4cplus_info(kModuleName, "%s: data length: %d", __func__, data.length);
-    
-//    XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];
-//    decoder.delegate = self;
-    
     
     int FIX_EXTRADATA_SIZE = 87;
     int FPS = 30;
@@ -149,7 +144,6 @@ extern "C" {
     
     memcpy(video_data + 4, data.bytes + startIndex + 4, nextFrameStart - startIndex - 4);
     
-    
     videoParseInfo.data = video_data;
     videoParseInfo.dataSize = (nextFrameStart - startIndex);
     
@@ -160,17 +154,10 @@ extern "C" {
     timingInfo.decodeTimeStamp       = CMTimeMakeWithSeconds(current_timestamp, FPS);
     videoParseInfo.timingInfo        = timingInfo;
     
-    [decoder startDecodeVideoData:&videoParseInfo];
+    [self.decoder startDecodeVideoData:&videoParseInfo];
     
-    [self performSelector:@selector(delayedFunction) withObject:nil afterDelay:2.0];
     free(videoParseInfo.data);
     free(videoParseInfo.extraData);
-    
-    
-}
-
-- (void)delayedFunction {
-    NSLog(@"Delayed function called");
 }
 
 - (NSInteger) findByFrame:(NSData *)data start:(NSInteger)start totalSize:(NSInteger)totalSize {
@@ -218,19 +205,14 @@ extern "C" {
 - (void)getVideoDecodeDataCallback:(CMSampleBufferRef)sampleBuffer isFirstFrame:(BOOL)isFirstFrame {
     if (self.isH265File) {//目前提供的H265视频文件带B帧，所以进行渲染排序（其实默认所有视频文件走排序也是可以的，不用区分）
         // Note : the first frame not need to sort.
-//        if (isFirstFrame) {//首帧直接渲染，不用排序
-//            [self.sortHandler cleanLinkList];
-//            CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
-//            [self.previewView displayPixelBuffer:pix];
-//            return;
-//        }
-//
-//        [self.sortHandler addDataToLinkList:sampleBuffer];//加入排序数组，排序好再渲染
-        
-        log4cplus_info(kModuleName, "%s: getVideoDecodeDataCallback to preview", __func__);
-        
-        CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
-        [self.previewView displayPixelBuffer:pix];
+        if (isFirstFrame) {//首帧直接渲染，不用排序
+            [self.sortHandler cleanLinkList];
+            CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
+            [self.previewView displayPixelBuffer:pix];
+            return;
+        }
+
+        [self.sortHandler addDataToLinkList:sampleBuffer];//加入排序数组，排序好再渲染
     }else {
         CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
         [self.previewView displayPixelBuffer:pix];

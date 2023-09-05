@@ -64,7 +64,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     }
     
     XDXVideoDecoder *decoder = (__bridge XDXVideoDecoder *)decompressionOutputRefCon;//回调过来的XDXVideoDecoder类对象
-    log4cplus_info(kModuleName, "%s: delegate33:%p", __func__, decoder.delegate);
+
     /**
      注意：IOS硬解码解码器没有缓存，解码出来的图像pts不是递增的，是按编码顺序解码的，解码后即送出来，没有按照真正的显示顺序送出来。
      所以这里的presentationTimeStamp不是递增的，如果直接拿这个图像去渲染会出现画面抖动。
@@ -80,9 +80,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     CMSampleBufferRef samplebuffer = [decoder createSampleBufferFromPixelbuffer:pixelBuffer
                                                                      timingInfo:sampleTime];
     if (samplebuffer) {
-        log4cplus_info(kModuleName, "samplebuffer is ok, decoder.delegate: %p", decoder.delegate);
         if ([decoder.delegate respondsToSelector:@selector(getVideoDecodeDataCallback:isFirstFrame:)]) {
-            log4cplus_info(kModuleName, "respondsToSelector");
             [decoder.delegate getVideoDecodeDataCallback:samplebuffer isFirstFrame:decoder->_isFirstFrame];
             if (decoder->_isFirstFrame) {
                 decoder->_isFirstFrame = NO;
@@ -267,7 +265,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         // 设置解码会话属性
         // 实时解码
         status = VTSessionSetProperty(session, kVTDecompressionPropertyKey_RealTime,kCFBooleanTrue);
-         NSLog(@"Vidoe hard decodeSession set property RealTime status = %d", (int)status);
+         NSLog(@"Video hard decodeSession set property RealTime status = %d", (int)status);
     }
     return session;
 }
@@ -478,8 +476,6 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     uint8_t *tempData = (uint8_t *)malloc(size);
     memcpy(tempData, data, size);
     
-    log4cplus_info(kModuleName, "%s: delegate11:%p", __func__, self.delegate);
-    
 //    NSLog(@"-------------decode data------------data size:%d", size);
 //    NSMutableString *extraDataString = [NSMutableString string];
 //    [extraDataString appendFormat:@"\n"];
@@ -559,7 +555,6 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     free(tempData);
     tempData = NULL;
     pthread_mutex_unlock(&lock);
-    log4cplus_info(kModuleName, "%s: delegate22:%p", __func__, self.delegate);
     log4cplus_info(kModuleName, "%s: startDecode on frame over",__func__);
 }
 
