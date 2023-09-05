@@ -61,8 +61,15 @@ extern "C" {
         log4cplus_info(kModuleName, "use FFmpeg!");
         [self startDecodeByFFmpegWithIsH265Data:self.isH265File];//使用ffmpeg接口进行软解码
     }else {
-        log4cplus_info(kModuleName, "use VideoToolbox!");
-        [self startDecodeByVTSessionWithIsH265Data:self.isH265File];//使用硬件VideoToolbox接口进行硬解码
+        log4cplus_info(kModuleName, "use VideoToolbox!");//使用硬件VideoToolbox接口进行硬解码
+        BOOL isVideoFile = NO;
+        if (isVideoFile) {
+            //1.解析视频媒体文件并解码渲染
+            [self startDecodeByVTSessionWithIsH265Data:self.isH265File];
+        } else {
+            //2.读取H265裸流文件，并解码渲染
+            [self startDecodeByVTSessionWithIsH265NakedData:self.isH265File];
+        }
     }
 }
 
@@ -85,22 +92,119 @@ extern "C" {
 }
 
 - (void)startDecodeByVTSessionWithIsH265Data:(BOOL)isH265 {
-    NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"test30frames_1080p_ld2" : @"testh264"  ofType:@"mp4"];
+    NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"hanleiVideo" : @"testh264"  ofType:@"mp4"];
     XDXAVParseHandler *parseHandler = [[XDXAVParseHandler alloc] initWithPath:path];//创建ffmpeg解析器
     XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];//创建VideoToolbox硬件解码器
     decoder.delegate = self;//设置VideoToolbox解码器的代理
     
-    [parseHandler startParseWithCompletionHandler:^(BOOL isVideoFrame, BOOL isFinish, struct XDXParseVideoDataInfo *videoInfo, struct XDXParseAudioDataInfo *audioInfo) {
+    [parseHandler startParseWithCompletionHandler:^(BOOL isVideoFrame, BOOL isFinish, struct XDXParseVideoDataInfo *videoParseInfo, struct XDXParseAudioDataInfo *audioParseInfo) {
         if (isFinish) {//结束解码
             [decoder stopDecoder];
             return;
         }
         
         if (isVideoFrame) {
-//            log4cplus_info(kModuleName, "%s: controller data size:%d", __func__, videoInfo->dataSize);
-            [decoder startDecodeVideoData:videoInfo];//硬件解码
+            //            log4cplus_info(kModuleName, "%s: controller data size:%d", __func__, videoParseInfo->dataSize);
+            [decoder startDecodeVideoData:videoParseInfo];//硬件解码
         }
     }];
+}
+
+- (void)startDecodeByVTSessionWithIsH265NakedData:(BOOL)isH265 {
+    XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];
+    decoder.delegate = self;
+    
+    log4cplus_info(kModuleName, "%s: decoder.delegate:%p", __func__, decoder.delegate);
+    
+    NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"test30frames_1080p_ld2" : @"testh264"  ofType:@"265"];
+    NSInputStream* inputStream = [NSInputStream inputStreamWithFileAtPath:path];
+    NSData *data = [self getBytesFromInputStream:inputStream];
+    if (!data || (data.length == 0)) {
+        return;
+    }
+    log4cplus_info(kModuleName, "%s: data length: %d", __func__, data.length);
+    
+//    XDXVideoDecoder *decoder = [[XDXVideoDecoder alloc] init];
+//    decoder.delegate = self;
+    
+    
+    int FIX_EXTRADATA_SIZE = 87;
+    int FPS = 30;
+    int startIndex = FIX_EXTRADATA_SIZE;
+    int nextFrameStart = -1;
+    
+    Float64 current_timestamp = [self getCurrentTimestamp];
+    
+    struct XDXParseVideoDataInfo videoParseInfo = {0};
+    videoParseInfo.videoFormat = XDXH265EncodeFormat;
+    videoParseInfo.videoRotate = 0;
+    videoParseInfo.extraDataSize = FIX_EXTRADATA_SIZE;
+    videoParseInfo.extraData = (uint8_t *)malloc(videoParseInfo.extraDataSize);
+    memcpy(videoParseInfo.extraData, data.bytes, videoParseInfo.extraDataSize);
+    
+    nextFrameStart = [self findByFrame:data start:startIndex+1 totalSize:data.length];
+    uint8_t* video_data = (uint8_t*)malloc(nextFrameStart - startIndex);
+    uint32_t big_endian_length = CFSwapInt32HostToBig(nextFrameStart - startIndex - 4);
+    memcpy(video_data, &big_endian_length, sizeof(big_endian_length));
+    
+    memcpy(video_data + 4, data.bytes + startIndex + 4, nextFrameStart - startIndex - 4);
+    
+    
+    videoParseInfo.data = video_data;
+    videoParseInfo.dataSize = (nextFrameStart - startIndex);
+    
+    CMSampleTimingInfo timingInfo;
+    CMTime presentationTimeStamp     = kCMTimeInvalid;
+    presentationTimeStamp            = CMTimeMakeWithSeconds(current_timestamp, FPS);
+    timingInfo.presentationTimeStamp = presentationTimeStamp;
+    timingInfo.decodeTimeStamp       = CMTimeMakeWithSeconds(current_timestamp, FPS);
+    videoParseInfo.timingInfo        = timingInfo;
+    
+    [decoder startDecodeVideoData:&videoParseInfo];
+    
+    [self performSelector:@selector(delayedFunction) withObject:nil afterDelay:2.0];
+    free(videoParseInfo.data);
+    free(videoParseInfo.extraData);
+    
+    
+}
+
+- (void)delayedFunction {
+    NSLog(@"Delayed function called");
+}
+
+- (NSInteger) findByFrame:(NSData *)data start:(NSInteger)start totalSize:(NSInteger)totalSize {
+    const uint8_t* bytes = data.bytes;
+    for (NSInteger i = start; i < totalSize - 4; i++) {
+        if ((bytes[i] == 0x00) && (bytes[i + 1] == 0x00) && (bytes[i + 2] == 0x00) && (bytes[i + 3] == 0x01)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+- (NSData *)getBytesFromInputStream:(NSInputStream *)inputStream {
+    if (!inputStream) {
+        return nil;
+    }
+    
+    NSMutableData *data = [NSMutableData data];
+    uint8_t buffer[8192]; // 8KB 缓冲区大小
+    NSInteger bytesRead;
+    
+    [inputStream open];
+    while ((bytesRead = [inputStream read:buffer maxLength:sizeof(buffer)]) > 0) {
+        [data appendBytes:buffer length:bytesRead];
+    }
+    [inputStream close];
+    return data;
+}
+
+//获取系统时间戳
+- (Float64)getCurrentTimestamp {
+    CMClockRef hostClockRef = CMClockGetHostTimeClock();
+    CMTime hostTime = CMClockGetTime(hostClockRef);
+    return CMTimeGetSeconds(hostTime);
 }
 
 #pragma mark - Decode Callback
@@ -114,14 +218,19 @@ extern "C" {
 - (void)getVideoDecodeDataCallback:(CMSampleBufferRef)sampleBuffer isFirstFrame:(BOOL)isFirstFrame {
     if (self.isH265File) {//目前提供的H265视频文件带B帧，所以进行渲染排序（其实默认所有视频文件走排序也是可以的，不用区分）
         // Note : the first frame not need to sort.
-        if (isFirstFrame) {//首帧直接渲染，不用排序
-            [self.sortHandler cleanLinkList];
-            CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
-            [self.previewView displayPixelBuffer:pix];
-            return;
-        }
+//        if (isFirstFrame) {//首帧直接渲染，不用排序
+//            [self.sortHandler cleanLinkList];
+//            CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
+//            [self.previewView displayPixelBuffer:pix];
+//            return;
+//        }
+//
+//        [self.sortHandler addDataToLinkList:sampleBuffer];//加入排序数组，排序好再渲染
         
-        [self.sortHandler addDataToLinkList:sampleBuffer];//加入排序数组，排序好再渲染
+        log4cplus_info(kModuleName, "%s: getVideoDecodeDataCallback to preview", __func__);
+        
+        CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
+        [self.previewView displayPixelBuffer:pix];
     }else {
         CVPixelBufferRef pix = CMSampleBufferGetImageBuffer(sampleBuffer);
         [self.previewView displayPixelBuffer:pix];

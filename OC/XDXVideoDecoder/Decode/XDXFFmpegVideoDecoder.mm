@@ -23,7 +23,7 @@ AVBufferRef *hw_device_ctx = NULL;
 static int InitHardwareDecoder(AVCodecContext *ctx, const enum AVHWDeviceType type) {
     int err = av_hwdevice_ctx_create(&hw_device_ctx, type, NULL, NULL, 0);
     if (err < 0) {
-        log4cplus_error(kModuleName, "Failed to create specified HW device.\n");
+        log4cplus_error(kModuleName, "Failed to create specified HW device");
         return err;
     }
     ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
@@ -84,10 +84,11 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
 }
 
 #pragma mark - Public
+//解码ffmpeg packet的码流数据
 - (void)startDecodeVideoDataWithAVPacket:(AVPacket)packet {
-    if (packet.flags == 1 && m_isFindIDR == NO) {
+    if ((packet.flags == 1) && (m_isFindIDR == NO)) {
         m_isFindIDR = YES;
-        m_base_time =  m_videoFrame->pts;
+        m_base_time =  m_videoFrame->pts;//获取到第一个时间戳，后续以这个为基准时间戳求差值
     }
     
     if (m_isFindIDR == YES) {
@@ -153,13 +154,13 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     int fps = DecodeGetAVStreamFPSTimeBase(videoStream);//获取帧率
     
     avcodec_send_packet(videoCodecContext, &packet);
-    while (0 == avcodec_receive_frame(videoCodecContext, videoFrame))
-    {
+    while (0 == avcodec_receive_frame(videoCodecContext, videoFrame)) {
         CVPixelBufferRef pixelBuffer = (CVPixelBufferRef)videoFrame->data[3];//ffmpeg硬解出来的图像也是NV12
         CMTime presentationTimeStamp = kCMTimeInvalid;
         int64_t originPTS = videoFrame->pts;
-        int64_t newPTS    = originPTS - baseTime;//得到新的时间戳
+        int64_t newPTS    = originPTS - baseTime;//得到新的时间戳 (这里这样做其实是没必要的，解码后的videoFrame->pts，本身就是递增的)
         presentationTimeStamp = CMTimeMakeWithSeconds(current_timestamp + newPTS * av_q2d(videoStream->time_base) , fps);
+        //构建一个CMSampleBufferRef，用于渲染。其实直接给pixelBuffer过去渲染就行了
         CMSampleBufferRef sampleBufferRef = [self convertCVImageBufferRefToCMSampleBufferRef:(CVPixelBufferRef)pixelBuffer
                                                                    withPresentationTimeStamp:presentationTimeStamp];
         if (sampleBufferRef) {
@@ -192,8 +193,7 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
 }
 
 #pragma mark - Other
-- (CMSampleBufferRef)convertCVImageBufferRefToCMSampleBufferRef:(CVImageBufferRef)pixelBuffer withPresentationTimeStamp:(CMTime)presentationTimeStamp
-{
+- (CMSampleBufferRef)convertCVImageBufferRefToCMSampleBufferRef:(CVImageBufferRef)pixelBuffer withPresentationTimeStamp:(CMTime)presentationTimeStamp {
     CVPixelBufferLockBaseAddress(pixelBuffer, 0);
     CMSampleBufferRef newSampleBuffer = NULL;
     OSStatus res = 0;
@@ -201,10 +201,10 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
     CMSampleTimingInfo timingInfo;
     timingInfo.duration              = kCMTimeInvalid;
     timingInfo.decodeTimeStamp       = presentationTimeStamp;
-    timingInfo.presentationTimeStamp = presentationTimeStamp;
+    timingInfo.presentationTimeStamp = presentationTimeStamp;//ffmpeg的解码时间戳，是递增顺序的
     
-    CMVideoFormatDescriptionRef videoInfo = NULL;
-    res = CMVideoFormatDescriptionCreateForImageBuffer(NULL, pixelBuffer, &videoInfo);
+    CMVideoFormatDescriptionRef videoFormatDesc = NULL;
+    res = CMVideoFormatDescriptionCreateForImageBuffer(NULL, pixelBuffer, &videoFormatDesc);
     if (res != 0) {
         log4cplus_error(kModuleName, "%s: Create video format description failed!",__func__);
         CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
@@ -216,9 +216,9 @@ static int DecodeGetAVStreamFPSTimeBase(AVStream *st) {
                                              true,
                                              NULL,
                                              NULL,
-                                             videoInfo,
+                                             videoFormatDesc,
                                              &timingInfo, &newSampleBuffer);
-    CFRelease(videoInfo);
+    CFRelease(videoFormatDesc);
     if (res != 0) {
         log4cplus_error(kModuleName, "%s: Create sample buffer failed!",__func__);
         CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);

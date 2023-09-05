@@ -1,6 +1,6 @@
 #import "XDXSortFrameHandler.h"
 
-const static int g_maxSize = 4;//最多只排序四个图像数据，应该是有问题的(某些带B帧视频的最大B帧数不只4帧)
+const static int g_maxSize = 8;//最多只排序四个图像数据，应该是有问题的(某些带B帧视频的最大B帧数不只4帧)
 
 //排序数组
 struct XDXSortLinkList {
@@ -48,6 +48,12 @@ typedef struct XDXSortLinkList XDXSortLinkList;
         // sort
         [self selectSortWithLinkList:&_sortLinkList];//选择排序，对链表数组中的数据根据时间戳大小重新排序
         
+        /*
+         这里一次性将队列中指定数量的排序好的图像进行渲染是有问题。因为没有判断后续是否还有依赖前面的帧，如果依赖，后面图像帧的
+         pts会比前面的图像帧的时间戳小，是需要先显示的。
+         这里的解决方案是：解析码流中最大B帧间隔数。在插入队列时，向缓存队列插入一帧就马上进行遍历排序。等到队列中的数据大于最大B帧
+         间隔数，即可以取出图像数据渲染
+         */
         for (int i = 0; i < g_maxSize; i++) {
             if ([self.delegate respondsToSelector:@selector(getSortedVideoNode:)]) {//相当于Android中的监听器，监听到有数据就回调
                 [self.delegate getSortedVideoNode:_sortLinkList.dataArray[i]];//获取排序好的图像数据

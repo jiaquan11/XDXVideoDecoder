@@ -21,6 +21,7 @@
     #define log4cplus_debug(category, logFmt, ...) \
     syslog(LOG_WARNING, "%s:" logFmt, category,##__VA_ARGS__); \
 
+
 #else //release模式不进行打印
     #define log4cplus_fatal(category, logFmt, ...); \
 
@@ -31,6 +32,7 @@
     #define log4cplus_info(category, logFmt, ...); \
 
     #define log4cplus_debug(category, logFmt, ...); \
+
 
 #endif
 

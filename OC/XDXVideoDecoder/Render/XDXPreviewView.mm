@@ -1,6 +1,7 @@
 #import "XDXPreviewView.h"
 #import <AVFoundation/AVUtilities.h>
 #import <OpenGLES/ES2/glext.h>
+#import <Foundation/Foundation.h>
 #import "log4cplus.h"
 
 #define kModuleName "XDXPreviewView"
@@ -14,8 +15,7 @@ typedef enum : NSUInteger {
     XDXPixelBufferTypeRGB,
 } XDXPixelBufferType;
 
-enum
-{
+enum {
     UNIFORM_Y,
     UNIFORM_UV,
     UNIFORM_COLOR_CONVERSION_MATRIX,
@@ -23,8 +23,7 @@ enum
 };
 GLint uniforms[NUM_UNIFORMS];
 
-enum
-{
+enum {
     ATTRIB_VERTEX,
     ATTRIB_TEXCOORD,
     NUM_ATTRIBUTES
@@ -53,8 +52,7 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     1.0f, 0.0f,
 };
 
-@interface XDXPreviewView ()
-{
+@interface XDXPreviewView () {
     GLint _backingWidth;
     GLint _backingHeight;
     
@@ -82,8 +80,9 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
 @property (nonatomic, assign) CGSize    screenResolutionSize;//屏幕分辨率大小
 @property (nonatomic, assign) XDXPixelBufferType bufferType;//图像数据类型
 @property (nonatomic, assign) XDXPixelBufferType lastBufferType;//上次的图像数据类型
+@property (nonatomic, assign) GLint previewCount;
 
-// 记录屏幕宽度,启动时如果是竖屏状态,会切换到横屏,所以屏幕宽高会改变,需要重新计算画面的尺寸。
+//记录屏幕宽度,启动时如果是竖屏状态,会切换到横屏,所以屏幕宽高会改变,需要重新计算画面的尺寸。
 @property (nonatomic, assign) CGFloat screenWidth;//手机屏幕宽度
 
 @end
@@ -147,6 +146,8 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     self.lastBufferType = XDXPixelBufferTypeNone;//上次渲染的图像数据类型
     _preferredConversion = kXDXPreViewColorConversion601FullRange;//转换矩阵
     
+    self.previewCount = 0;
+    
     _context = [self createOpenGLContextWithWidth:&_backingWidth
                                            height:&_backingHeight
                                 videoTextureCache:&_videoTextureCache
@@ -162,6 +163,7 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     
     CVReturn error;
     
+    //通过pixelBuffer获取图像的宽高
     int frameWidth  = (int)CVPixelBufferGetWidth(pixelBuffer);//获取实际的图像宽
     int frameHeight = (int)CVPixelBufferGetHeight(pixelBuffer);//获取实际的图像高
     
@@ -177,9 +179,9 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     [self cleanUpTextures];
     
     XDXPixelBufferType bufferType;
-    if (CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange || CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
+    if (CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange || CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {//输入YUV，通过opengl转RGB
         bufferType = XDXPixelBufferTypeNV12;
-    } else if (CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA) {
+    } else if (CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA) {//直接渲染RGB
         bufferType = XDXPixelBufferTypeRGB;
     }else {
         log4cplus_error(kModuleName, "Not support current format.");
@@ -311,10 +313,10 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
         quadVertexData[7] = normalizedSamplingSize.height;
     }
     
-    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, quadVertexData);
+    glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, quadVertexData);//顶点坐标
     glEnableVertexAttribArray(ATTRIB_VERTEX);
     
-    glVertexAttribPointer(ATTRIB_TEXCOORD, 2, GL_FLOAT, 0, 0, quadTextureData);
+    glVertexAttribPointer(ATTRIB_TEXCOORD, 2, GL_FLOAT, 0, 0, quadTextureData);//纹理坐标
     glEnableVertexAttribArray(ATTRIB_TEXCOORD);
     
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -326,26 +328,29 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     }
     
     self.lastBufferType = self.bufferType;
+    NSLog(@"preview count is %d", self.previewCount);
+    self.previewCount++;
 }
 
-- (EAGLContext *)createOpenGLContextWithWidth:(int *)width height:(int *)height videoTextureCache:(CVOpenGLESTextureCacheRef *)videoTextureCache colorBufferHandle:(GLuint *)colorBufferHandle frameBufferHandle:(GLuint *)frameBufferHandle {
+- (EAGLContext *)createOpenGLContextWithWidth:(int *)backwidth height:(int *)backheight videoTextureCache:(CVOpenGLESTextureCacheRef *)videoTextureCache colorBufferHandle:(GLuint *)colorBufferHandle frameBufferHandle:(GLuint *)frameBufferHandle {
     self.contentScaleFactor = [[UIScreen mainScreen] scale];
     
+    //渲染控件设置属性
     CAEAGLLayer *eaglLayer       = (CAEAGLLayer *)self.layer;
     eaglLayer.opaque = YES;
     eaglLayer.drawableProperties = @{kEAGLDrawablePropertyRetainedBacking   : [NSNumber numberWithBool:NO],
                                      kEAGLDrawablePropertyColorFormat       : kEAGLColorFormatRGBA8};
     
-    EAGLContext *context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];//EGL上下文
+    EAGLContext *context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];//创建EGL上下文
     [EAGLContext setCurrentContext:context];
     
     [self setupBuffersWithContext:context
-                            width:width
-                           height:height
+                            width:backwidth
+                           height:backheight
                 colorBufferHandle:colorBufferHandle
                 frameBufferHandle:frameBufferHandle];
     
-    //同时加载两个shader的程序
+    //同时先提前加载两种类型的shader的程序
     [self loadShaderWithBufferType:XDXPixelBufferTypeNV12];
     [self loadShaderWithBufferType:XDXPixelBufferTypeRGB];
     
@@ -358,8 +363,8 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     return context;
 }
 
-- (void)setupBuffersWithContext:(EAGLContext *)context width:(int *)width height:(int *)height colorBufferHandle:(GLuint *)colorBufferHandle frameBufferHandle:(GLuint *)frameBufferHandle {
-    glDisable(GL_DEPTH_TEST);
+- (void)setupBuffersWithContext:(EAGLContext *)context width:(int *)backwidth height:(int *)backheight colorBufferHandle:(GLuint *)colorBufferHandle frameBufferHandle:(GLuint *)frameBufferHandle {
+    glDisable(GL_DEPTH_TEST);//关闭深度测试
     
     glEnableVertexAttribArray(ATTRIB_VERTEX);
     glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
@@ -374,10 +379,10 @@ GLfloat quadTextureData[] = {//左上角为原点，与Android端一致
     glBindRenderbuffer(GL_RENDERBUFFER, *colorBufferHandle);
     
     [context renderbufferStorage:GL_RENDERBUFFER fromDrawable:(CAEAGLLayer *)self.layer];
-    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH , width);//获取屏幕的宽
-    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, height);//获取屏幕的高
+    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH , backwidth);//获取屏幕的宽
+    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, backheight);//获取屏幕的高
     
-    log4cplus_error(kModuleName, "setupBuffersWithContext width: %d, height: %d", *width, *height);
+    log4cplus_error(kModuleName, "setupBuffersWithContext backwidth: %d, backheight: %d", *backwidth, *backheight);
     
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, *colorBufferHandle);//frameBuffer加入到RenderBuffer中
 }
