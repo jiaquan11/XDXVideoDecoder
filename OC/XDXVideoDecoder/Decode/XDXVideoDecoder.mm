@@ -2,7 +2,6 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <pthread.h>
 #include "log4cplus.h"
-#import "XDXPreviewView.h"
 
 #define kModuleName "XDXVideoDecoder"
 
@@ -43,6 +42,7 @@ typedef struct {
     int     _lastExtraDataSize;
     
     BOOL _isFirstFrame;
+    dispatch_semaphore_t decodeSemaphore;
 }
 
 @end
@@ -52,12 +52,12 @@ typedef struct {
 #pragma mark - Callback
 //收到解码后数据的回调
 static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFrameRefCon, OSStatus status, VTDecodeInfoFlags infoFlags, CVImageBufferRef pixelBuffer, CMTime presentationTimeStamp, CMTime presentationDuration) {
-    XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)sourceFrameRefCon;
+    //XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)sourceFrameRefCon;
     if (pixelBuffer == NULL) {
         log4cplus_error(kModuleName, "%s: pixelbuffer is NULL status = %d",__func__,status);
-        if (sourceRef) {
-            free(sourceRef);
-        }
+//        if (sourceRef) {
+//            free(sourceRef);
+//        }
         return;
     }else {
         log4cplus_info(kModuleName, "%s: VideoDecoderCallback one frame ok",__func__);
@@ -87,13 +87,15 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
             }
         }
         CFRelease(samplebuffer);
+        log4cplus_info(kModuleName, "%s: VideoDecoder send singal !", __func__);
+        dispatch_semaphore_signal(decoder->decodeSemaphore);
     }else {
         log4cplus_error(kModuleName, "%s: VideoDecoderCallback createSampleBufferFromPixelbuffer failed",__func__);
     }
     
-    if (sourceRef) {
-        free(sourceRef);
-    }
+//    if (sourceRef) {
+//        free(sourceRef);
+//    }
 }
 
 #pragma mark - life cycle
@@ -106,6 +108,8 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         };
         _isFirstFrame = YES;
         pthread_mutex_init(&_decoder_lock, NULL);
+        
+        decodeSemaphore = dispatch_semaphore_create(0);
     }
     return self;
 }
@@ -123,15 +127,15 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
         uint8_t *extraData = videoParseInfo->extraData;
         int     size       = videoParseInfo->extraDataSize;
         NSLog(@"-------------decode extra data------------size:%d", size);
-        NSMutableString *extraDataString = [NSMutableString string];
-        [extraDataString appendFormat:@"\n"];
-        for (int i = 0; i < size; i++) {
-            [extraDataString appendFormat:@"%02X ", extraData[i]];
-            if ((i + 1) % 16 == 0) {
-                [extraDataString appendFormat:@"\n"];
-            }
-        }
-        NSLog(@"%@", extraDataString);
+//        NSMutableString *extraDataString = [NSMutableString string];
+//        [extraDataString appendFormat:@"\n"];
+//        for (int i = 0; i < size; i++) {
+//            [extraDataString appendFormat:@"%02X ", extraData[i]];
+//            if ((i + 1) % 16 == 0) {
+//                [extraDataString appendFormat:@"\n"];
+//            }
+//        }
+//        NSLog(@"%@", extraDataString);
         
         BOOL isNeedUpdate = [self isNeedUpdateExtraDataWithNewExtraData:extraData
                                                                 newSize:size
@@ -177,8 +181,21 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     [self destoryDecoder];
 }
 
-#pragma mark - private methods
+- (bool)getDecoderStatus {
+    NSLog(@"VideoDecoder getDecoderStatus start");
+    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC);
+    NSLog(@"VideoDecoder getDecoderStatus start wait");
+    long result = dispatch_semaphore_wait(decodeSemaphore, timeout);//等待信号量,超时时间300ms
+    NSLog(@"VideoDecoder getDecoderStatus wait over result: %d", result);
+    if (result != 0) {
+        NSLog(@"VideoDecoder getDecoderStatus decode timeout");
+        return false;
+    }
+    NSLog(@"VideoDecoder getDecoderStatus _isFirstFrame: _isFirstFrame: %d", _isFirstFrame);
+    return _isFirstFrame;
+}
 
+#pragma mark - private methods
 #pragma mark Create / Destory decoder
 - (VTDecompressionSessionRef)createDecoderWithVideoInfo:(XDXParseVideoDataInfo *)videoParseInfo videoDescRef:(CMVideoFormatDescriptionRef *)videoDescRef videoFormat:(OSType)videoFormat lock:(pthread_mutex_t)lock callback:(VTDecompressionOutputCallback)callback decoderInfo:(XDXDecoderInfo)decoderInfo {
     pthread_mutex_lock(&lock);
@@ -471,7 +488,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
     int     size   = videoParseInfo->dataSize;
     int     rotate = videoParseInfo->videoRotate;
     CMSampleTimingInfo timingInfo = videoParseInfo->timingInfo;
-//    log4cplus_info(kModuleName, "%s: start decode data size: %d",__func__, size);
+    log4cplus_info(kModuleName, "%s: start decode data size: %d",__func__, size);
     
     uint8_t *tempData = (uint8_t *)malloc(size);
     memcpy(tempData, data, size);
@@ -490,11 +507,11 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
      这里用于解码一帧图像时，传递的赋值好的参数信息结构体
      目前不知道有啥用，好像没啥用，先留着
      */
-    XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)malloc(sizeof(XDXDecodeVideoInfo));
-    sourceRef->outputPixelbuffer  = NULL;
-    sourceRef->rotate             = rotate;//视频角度
-    sourceRef->pts                = videoParseInfo->pts;//显示时间戳
-    sourceRef->fps                = videoParseInfo->fps;//帧率
+//    XDXDecodeVideoInfo *sourceRef = (XDXDecodeVideoInfo *)malloc(sizeof(XDXDecodeVideoInfo));
+//    sourceRef->outputPixelbuffer  = NULL;
+//    sourceRef->rotate             = rotate;//视频角度
+//    sourceRef->pts                = videoParseInfo->pts;//显示时间戳
+//    sourceRef->fps                = videoParseInfo->fps;//帧率
     
     CMBlockBufferRef blockBuffer;
     OSStatus status = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,
@@ -527,7 +544,7 @@ static void VideoDecoderCallback(void *decompressionOutputRefCon, void *sourceFr
             OSStatus decodeStatus      = VTDecompressionSessionDecodeFrame(session,
                                                                            sampleBuffer,
                                                                            flags,//解码模式
-                                                                           sourceRef,//这里可以置NULL,目前看没啥用
+                                                                           NULL,//这里可以置NULL,目前看没啥用
                                                                            &flagInfoOut);//开始解码
             log4cplus_info(kModuleName, "%s: VTDecompressionSessionDecodeFrame decodeStatus:%d",__func__, decodeStatus);
             if(decodeStatus == kVTInvalidSessionErr) {

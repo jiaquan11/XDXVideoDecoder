@@ -4,6 +4,7 @@
 #import "XDXVideoDecoder.h"
 #import "XDXFFmpegVideoDecoder.h"
 #import "XDXSortFrameHandler.h"
+#import "XDXVideoDecoderManagerTest.h"
 
 // FFmpeg Header File
 #ifdef __cplusplus
@@ -63,13 +64,14 @@ extern "C" {
         [self startDecodeByFFmpegWithIsH265Data:self.isH265File];//使用ffmpeg接口进行软解码
     }else {
         log4cplus_info(kModuleName, "use VideoToolbox!");//使用硬件VideoToolbox接口进行硬解码
-        BOOL isVideoFile = YES;
+        BOOL isVideoFile = NO;
         if (isVideoFile) {
             //1.解析视频媒体文件并解码渲染
             [self startDecodeByVTSessionWithIsH265Data:self.isH265File];
         } else {
             //2.读取H265裸流文件，并解码渲染
-            [self startDecodeByVTSessionWithIsH265NakedData:self.isH265File];
+//            [self startDecodeByVTSessionWithIsH265NakedData:self.isH265File];
+            [self startDecodeByVTSessionWithIsH265NakedData2:self.isH265File];
         }
     }
 }
@@ -111,10 +113,11 @@ extern "C" {
     }];
 }
 
+//H265码流裸流文件直接测试，可渲染第一帧
 - (void)startDecodeByVTSessionWithIsH265NakedData:(BOOL)isH265 {
     self.decoder = [[XDXVideoDecoder alloc] init];
     self.decoder.delegate = self;
-    
+
     NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"test30frames_1080p_ld2" : @"testh264"  ofType:@"265"];
     NSInputStream* inputStream = [NSInputStream inputStreamWithFileAtPath:path];
     NSData *data = [self getBytesFromInputStream:inputStream];
@@ -122,42 +125,50 @@ extern "C" {
         return;
     }
     log4cplus_info(kModuleName, "%s: data length: %d", __func__, data.length);
-    
+
     int FIX_EXTRADATA_SIZE = 87;
     int FPS = 30;
     int startIndex = FIX_EXTRADATA_SIZE;
     int nextFrameStart = -1;
-    
+
     Float64 current_timestamp = [self getCurrentTimestamp];
-    
+
     struct XDXParseVideoDataInfo videoParseInfo = {0};
     videoParseInfo.videoFormat = XDXH265EncodeFormat;
     videoParseInfo.videoRotate = 0;
     videoParseInfo.extraDataSize = FIX_EXTRADATA_SIZE;
     videoParseInfo.extraData = (uint8_t *)malloc(videoParseInfo.extraDataSize);
     memcpy(videoParseInfo.extraData, data.bytes, videoParseInfo.extraDataSize);
-    
+
     nextFrameStart = [self findByFrame:data start:startIndex+1 totalSize:data.length];
     uint8_t* video_data = (uint8_t*)malloc(nextFrameStart - startIndex);
     uint32_t big_endian_length = CFSwapInt32HostToBig(nextFrameStart - startIndex - 4);
     memcpy(video_data, &big_endian_length, sizeof(big_endian_length));
-    
+
     memcpy(video_data + 4, data.bytes + startIndex + 4, nextFrameStart - startIndex - 4);
-    
+
     videoParseInfo.data = video_data;
     videoParseInfo.dataSize = (nextFrameStart - startIndex);
-    
+
     CMSampleTimingInfo timingInfo;
     CMTime presentationTimeStamp     = kCMTimeInvalid;
     presentationTimeStamp            = CMTimeMakeWithSeconds(current_timestamp, FPS);
     timingInfo.presentationTimeStamp = presentationTimeStamp;
     timingInfo.decodeTimeStamp       = CMTimeMakeWithSeconds(current_timestamp, FPS);
     videoParseInfo.timingInfo        = timingInfo;
-    
+
     [self.decoder startDecodeVideoData:&videoParseInfo];
-    
+
     free(videoParseInfo.data);
     free(videoParseInfo.extraData);
+}
+
+//H265码流裸流文件封装类测试
+XDXVideoDecoderManagerTest *videoDecoderManagerTest;
+- (void)startDecodeByVTSessionWithIsH265NakedData2:(BOOL)isH265 {
+    NSString *path = [[NSBundle mainBundle] pathForResource:isH265 ? @"test30frames_1080p_ld2" : @"testh264"  ofType:@"265"];
+    videoDecoderManagerTest =  [XDXVideoDecoderManagerTest new];
+    [videoDecoderManagerTest startDecodeByVTSessionWithIsH265NakedData:path];
 }
 
 - (NSInteger) findByFrame:(NSData *)data start:(NSInteger)start totalSize:(NSInteger)totalSize {
@@ -232,3 +243,4 @@ extern "C" {
     [self.previewView displayPixelBuffer:pix];
 }
 @end
+
